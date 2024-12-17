@@ -23,16 +23,17 @@ function trimContext(chat) {
 
     console.debug('Trimming context, message count before:', chat.length);
 
-    const startingPoint = getStartingPoint(chat, settings.maxMessageHistoryContext, settings.chunkSize);
-    console.debug('Starting point:', startingPoint);
-    chat.splice(0, startingPoint);
+    let totalTokens = getTokenCount(renderChat(chat));
 
-    while (getTokenCount(renderChat(chat)) > settings.maxMessageHistoryContext) {
-        chat.splice(0, settings.chunkSize);
+    while (totalTokens > settings.maxMessageHistoryContext && chat.length > 0) {
+        const chunkToRemove = Math.min(settings.chunkSize, chat.length);
+        const removedChunk = chat.splice(0, chunkToRemove);
+        totalTokens -= getTokenCount(renderChat(removedChunk));
     }
 
-    console.debug('Trimming context, message count after:', chat.length);
+    console.debug('CacheChunker: Trimming context, message count after:', chat.length);
 }
+
 
 function renderChat(chat) {
     return chat.map((message) => {
@@ -50,18 +51,12 @@ function renderChat(chat) {
  */
 function getStartingPoint(chat, maxTokens, chunkSize, tolerance = 0.1) {
     const totalTokens = guesstimate(renderChat(chat));
-    const target = maxTokens + (maxTokens * tolerance);
-
-    if (totalTokens <= target) {
+    if (totalTokens <= maxTokens) {
         return 0;
     }
 
-    const targetAsPercentage = target / totalTokens;
-    const targetWithTolerance = targetAsPercentage + tolerance;
-    const index = Math.floor(chat.length * targetWithTolerance);
-    const chunkedIndex = index - (index % chunkSize);
-
-    return chunkedIndex;
+    const targetIndex = Math.floor(chat.length * (maxTokens / totalTokens));
+    return Math.max(0, targetIndex - (targetIndex % chunkSize));
 }
 
 window['CacheChunker_trimContext'] = trimContext;
